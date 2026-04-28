@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { apiFetch } from '../utils/api'
+import { looksLikeUuid, normalizeBookingFromApi } from '../utils/apiNormalize'
 import {
   DetailRow,
   formatMoney,
@@ -102,7 +103,7 @@ function infoFormFromRow(r) {
 function BookingDetailPage() {
   const { bookingId } = useParams()
   const navigate = useNavigate()
-  const id = bookingId && /^\d+$/.test(bookingId) ? Number(bookingId) : null
+  const bookingUuid = bookingId && looksLikeUuid(bookingId) ? bookingId.trim() : null
 
   const [row, setRow] = useState(null)
   const [loadError, setLoadError] = useState(null)
@@ -141,7 +142,7 @@ function BookingDetailPage() {
     }
     return [
       {
-        id: row.id,
+        uuid: row.uuid,
         reference: row.reference,
         unitName: row.unitName,
         totalPrice: row.totalPrice,
@@ -168,7 +169,7 @@ function BookingDetailPage() {
   const [unitDeleteConfirm, setUnitDeleteConfirm] = useState(null)
 
   const loadBooking = useCallback(async () => {
-    if (id == null) {
+    if (bookingUuid == null) {
       setLoadError('Invalid booking.')
       setLoading(false)
       setRow(null)
@@ -177,9 +178,10 @@ function BookingDetailPage() {
     setLoadError(null)
     setLoading(true)
     try {
-      const data = await apiFetch(`/v1/bookings/${id}`)
-      if (data && typeof data === 'object' && data.id != null) {
-        setRow(data)
+      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`)
+      const normalized = normalizeBookingFromApi(data)
+      if (normalized?.uuid) {
+        setRow(normalized)
       } else {
         setRow(null)
         setLoadError('Booking not found.')
@@ -190,7 +192,7 @@ function BookingDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [bookingUuid])
 
   useEffect(() => {
     void loadBooking()
@@ -207,16 +209,16 @@ function BookingDetailPage() {
     setInfoForm(infoFormFromRow(null))
     setDeletingUnitBookingId(null)
     setUnitDeleteConfirm(null)
-  }, [id])
+  }, [bookingUuid])
 
   const loadPayments = useCallback(async () => {
-    if (id == null) {
+    if (bookingUuid == null) {
       return
     }
     setPaymentsError(null)
     setPaymentsLoading(true)
     try {
-      const data = await apiFetch(`/v1/bookings/${id}/payments`)
+      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}/payments`)
       if (data?.summary && typeof data.summary === 'object') {
         setPaymentSummary(data.summary)
       } else {
@@ -230,14 +232,14 @@ function BookingDetailPage() {
     } finally {
       setPaymentsLoading(false)
     }
-  }, [id])
+  }, [bookingUuid])
 
   useEffect(() => {
-    if (id == null || detailTab !== 'payment') {
+    if (bookingUuid == null || detailTab !== 'payment') {
       return
     }
     void loadPayments()
-  }, [id, detailTab, loadPayments])
+  }, [bookingUuid, detailTab, loadPayments])
 
   useEffect(() => {
     if (detailTab !== 'information') {
@@ -247,7 +249,7 @@ function BookingDetailPage() {
   }, [detailTab])
 
   useEffect(() => {
-    if (row == null || id == null) {
+    if (row == null || bookingUuid == null) {
       setAvailableUnits([])
       return
     }
@@ -259,7 +261,7 @@ function BookingDetailPage() {
     setAvailableUnitsLoading(true)
     ;(async () => {
       try {
-        const data = await apiFetch(`/v1/bookings/${id}/available-units`)
+        const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}/available-units`)
         if (!cancelled && Array.isArray(data?.units)) {
           setAvailableUnits(data.units)
         }
@@ -276,7 +278,7 @@ function BookingDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [id, row?.id, row?.status])
+  }, [bookingUuid, row?.uuid, row?.status])
 
   function beginInfoEdit() {
     if (!row) {
@@ -297,7 +299,7 @@ function BookingDetailPage() {
 
   async function handleSaveInfo(e) {
     e.preventDefault()
-    if (!row || id == null) {
+    if (!row || bookingUuid == null) {
       return
     }
     const guestName = infoForm.guestName.trim()
@@ -341,12 +343,13 @@ function BookingDetailPage() {
       payload.totalPrice = n
     }
     try {
-      const data = await apiFetch(`/v1/bookings/${id}`, {
+      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       })
-      if (data && typeof data === 'object') {
-        setRow((prev) => (prev ? { ...prev, ...data } : prev))
+      const next = normalizeBookingFromApi(data)
+      if (next) {
+        setRow(next)
       }
       setInfoEditing(false)
     } catch (err) {
@@ -358,7 +361,7 @@ function BookingDetailPage() {
 
   async function handleRecordPayment(e) {
     e.preventDefault()
-    if (!row || id == null) {
+    if (!row || bookingUuid == null) {
       return
     }
     const actionKind = e?.nativeEvent?.submitter?.value === 'refund' ? 'refund' : 'payment'
@@ -378,7 +381,7 @@ function BookingDetailPage() {
     setPaymentSaving(true)
     setPaymentsError(null)
     try {
-      const data = await apiFetch(`/v1/bookings/${id}/payments`, {
+      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}/payments`, {
         method: 'POST',
         body: JSON.stringify({
           amount,
@@ -406,18 +409,19 @@ function BookingDetailPage() {
   }
 
   async function handleSetStatus(status) {
-    if (!row || id == null) {
+    if (!row || bookingUuid == null) {
       return
     }
     setSaving(true)
     setViewError(null)
     try {
-      const data = await apiFetch(`/v1/bookings/${id}`, {
+      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       })
-      if (data && typeof data === 'object') {
-        setRow((prev) => (prev ? { ...prev, ...data } : prev))
+      const next = normalizeBookingFromApi(data)
+      if (next) {
+        setRow(next)
       }
     } catch (e) {
       setViewError(e instanceof Error ? e.message : 'Could not update status.')
@@ -427,11 +431,10 @@ function BookingDetailPage() {
   }
 
   function openUnitDeleteConfirm(line) {
-    if (!line?.id) return
-    const lineId = Number(line.id)
-    if (!Number.isFinite(lineId) || lineId <= 0) return
+    const lineUuid = line?.uuid ?? line?.id
+    if (typeof lineUuid !== 'string' || !looksLikeUuid(lineUuid)) return
     setUnitDeleteConfirm({
-      id: lineId,
+      uuid: lineUuid.trim(),
       reference: typeof line.reference === 'string' ? line.reference : '',
     })
   }
@@ -442,14 +445,14 @@ function BookingDetailPage() {
   }
 
   async function confirmDeleteUnitRequest() {
-    if (!unitDeleteConfirm?.id) return
-    const lineId = Number(unitDeleteConfirm.id)
+    if (!unitDeleteConfirm?.uuid) return
+    const lineUuid = unitDeleteConfirm.uuid
     setUnitDeleteConfirm(null)
-    setDeletingUnitBookingId(lineId)
+    setDeletingUnitBookingId(lineUuid)
     setViewError(null)
     try {
-      await apiFetch(`/v1/bookings/${lineId}`, { method: 'DELETE' })
-      if (id != null && lineId === id) {
+      await apiFetch(`/v1/bookings/${encodeURIComponent(lineUuid)}`, { method: 'DELETE' })
+      if (bookingUuid != null && lineUuid === bookingUuid) {
         navigate('/bookings')
         return
       }
@@ -487,7 +490,7 @@ function BookingDetailPage() {
         {loadError ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
             {loadError}
-            {id == null ? null : (
+            {bookingUuid == null ? null : (
               <button
                 type="button"
                 onClick={() => void loadBooking()}
@@ -795,7 +798,7 @@ function BookingDetailPage() {
                           <ul className="mt-2 divide-y divide-slate-200/80">
                             {unitTabLines.map((line) => (
                               <li
-                                key={line.id}
+                                key={line.uuid ?? line.id}
                                 className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm"
                               >
                                 <div className="min-w-0">
@@ -812,10 +815,10 @@ function BookingDetailPage() {
                                     <button
                                       type="button"
                                       onClick={() => openUnitDeleteConfirm(line)}
-                                      disabled={deletingUnitBookingId === Number(line.id) || saving}
+                                      disabled={deletingUnitBookingId === (line.uuid ?? line.id) || saving}
                                       className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                      {deletingUnitBookingId === Number(line.id) ? 'Deleting…' : 'Delete'}
+                                      {deletingUnitBookingId === (line.uuid ?? line.id) ? 'Deleting…' : 'Delete'}
                                     </button>
                                   ) : null}
                                 </div>
@@ -1035,7 +1038,7 @@ function BookingDetailPage() {
                               </thead>
                               <tbody>
                                 {paymentsList.map((p) => (
-                                  <tr key={p.id} className="border-b border-slate-50 last:border-0">
+                                  <tr key={p.uuid ?? p.id} className="border-b border-slate-50 last:border-0">
                                     <td className="px-4 py-2.5 tabular-nums text-slate-700">
                                       {formatIsoDateTime(p.createdAt)}
                                     </td>
@@ -1113,7 +1116,7 @@ function BookingDetailPage() {
                     ) : availableUnits.length > 0 ? (
                       <ul className="divide-y divide-slate-100">
                         {availableUnits.map((u) => (
-                          <li key={u.id} className="py-2 text-sm font-semibold text-slate-800">
+                          <li key={u.uuid ?? u.id} className="py-2 text-sm font-semibold text-slate-800">
                             <span>{u.name}</span>
                             {u.propertyName ? (
                               <span className="ml-2 block font-normal text-slate-500 sm:inline sm:ml-2">({u.propertyName})</span>
@@ -1203,7 +1206,7 @@ function BookingDetailPage() {
                   Delete booking request?
                 </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  This permanently removes one unit request ({unitDeleteConfirm.reference || `#${unitDeleteConfirm.id}`}). This cannot be undone.
+                  This permanently removes one unit request ({unitDeleteConfirm.reference || unitDeleteConfirm.uuid}). This cannot be undone.
                 </p>
               </div>
               <div className="flex flex-col-reverse gap-2 border-t border-slate-100 px-5 py-4 sm:flex-row sm:justify-end">

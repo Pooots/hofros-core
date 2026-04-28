@@ -14,6 +14,29 @@ import { savePortalSearchIntent } from '../../utils/guestPortalSearchIntent'
 import { emphasisTextOnLightBg, ratingStarColorOnLightBg } from '../../utils/guestPortalColorContrast'
 import { contactSendButtonProps } from '../../utils/guestPortalThemeStyles'
 
+/** Must match `emptyGuestPortalLayout().sectionOrder` — used when layout omits ids or order is empty. */
+const DEFAULT_MICROSITE_SECTION_ORDER = ['hero', 'units', 'amenities', 'reviews', 'contact']
+
+function normalizeMicrositeSectionOrder(raw) {
+  const defaults = DEFAULT_MICROSITE_SECTION_ORDER
+  const allowed = new Set(defaults)
+  const list = Array.isArray(raw) ? raw : []
+  const seen = new Set()
+  const out = []
+  for (const id of list) {
+    if (typeof id === 'string' && allowed.has(id) && !seen.has(id)) {
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  for (const id of defaults) {
+    if (!seen.has(id)) {
+      out.push(id)
+    }
+  }
+  return out
+}
+
 function cssBackgroundUrl(imageUrl) {
   const u = (imageUrl ?? '').trim() || DEFAULT_HERO_BANNER_URL
   return `url(${JSON.stringify(u)})`
@@ -188,7 +211,7 @@ export default function GuestPortalMicrosite({
   const hero = (heroImageUrl ?? '').trim() || DEFAULT_HERO_BANNER_URL
   const year = new Date().getFullYear()
   const vis = layout?.sectionVisibility ?? {}
-  const order = Array.isArray(layout?.sectionOrder) ? layout.sectionOrder : []
+  const sectionOrder = useMemo(() => normalizeMicrositeSectionOrder(layout?.sectionOrder), [layout?.sectionOrder])
   const showReviewsExtra = layout?.showReviews !== false
   const showMap = layout?.showMap !== false
   const sendBtn = contactSendButtonProps(themePreset, primaryColor)
@@ -197,7 +220,8 @@ export default function GuestPortalMicrosite({
   const [searchModalQuery, setSearchModalQuery] = useState(null)
 
   function renderSection(id) {
-    if (!vis[id]) {
+    /* Default visible; only hide when explicitly false (missing key = show, matches backend GuestPortalLayout). */
+    if (vis[id] === false) {
       return null
     }
 
@@ -263,7 +287,7 @@ export default function GuestPortalMicrosite({
             ) : (
               <ul className="mt-6 grid grid-cols-1 gap-4 sm:mt-8 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
                 {unitRows.map((unit) => {
-                  const bookHref = typeof bookTo === 'function' && slug ? bookTo(unit.id) : null
+                  const bookHref = typeof bookTo === 'function' && slug ? bookTo(unit.uuid ?? unit.id) : null
                   const useBookLink = Boolean(bookHref) && LinkComponent !== 'span'
                   const BookTag = useBookLink ? LinkComponent : 'button'
                   const bookProps = useBookLink
@@ -273,7 +297,7 @@ export default function GuestPortalMicrosite({
                     : { type: 'button' }
                   return (
                     <li
-                      key={unit.id}
+                      key={unit.uuid ?? unit.id}
                       className="flex flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/5"
                     >
                       <div className="flex flex-1 flex-wrap items-start justify-between gap-3">
@@ -464,7 +488,7 @@ export default function GuestPortalMicrosite({
           </div>
         )}
 
-        {order.map((id) => renderSection(id))}
+        {sectionOrder.map((sectionId) => renderSection(sectionId))}
 
         <footer className="mt-auto border-t border-slate-100 bg-slate-50/90 px-4 py-4 text-center text-[11px] text-slate-500 sm:px-6 lg:px-8">
           {slug ? `/${slug}/directportal` : null}

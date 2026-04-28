@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DEFAULT_HERO_BANNER_URL } from '../data/heroBannerPresets'
 import GuestPortalDateField from '../components/guestPortal/GuestPortalDateField'
-import { apiFetch, resolvePublicStorageUrl } from '../utils/api'
+import { apiFetch, resolvePublicStorageUrl, unwrapJsonResourceData } from '../utils/api'
 import { displayNameFromSlug } from '../utils/merchantSlug'
 import { addDaysToYmd, defaultStayDatesFromToday, toYmdLocal } from '../utils/guestPortalDates'
 import { stayRangesOverlap } from '../utils/stayRange'
@@ -17,6 +17,9 @@ import {
 
 /** Must match `BookingStayConflict::MAX_PORTAL_UNITS_PER_BOOKING` in the API. */
 const DIRECT_PORTAL_MAX_UNITS = 50
+
+/** Delay before quote API runs after promo field changes (ms). */
+const PROMO_QUOTE_DEBOUNCE_MS = 1000
 
 function ImagePreviewLightbox({ openIndex, urls, ariaLabel, onClose, onSetIndex }) {
   if (openIndex === null || urls.length === 0 || openIndex < 0 || openIndex >= urls.length) {
@@ -157,6 +160,8 @@ function DirectPortalBookPage() {
   const [guestMobile, setGuestMobile] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
   const [promoCode, setPromoCode] = useState('')
+  /** Used for `/quote` only so typing does not hit the API every keystroke. */
+  const [debouncedPromoForQuote, setDebouncedPromoForQuote] = useState('')
   const [checkIn, setCheckIn] = useState(defaults.checkIn)
   const [checkOut, setCheckOut] = useState(defaults.checkOut)
   const [adults, setAdults] = useState(2)
@@ -176,9 +181,17 @@ function DirectPortalBookPage() {
     setGuestMobile('')
     setGuestEmail('')
     setPromoCode('')
+    setDebouncedPromoForQuote('')
     setUnitCount(1)
     setSubmissionReceipt(null)
   }, [unitId])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedPromoForQuote(promoCode.trim().toUpperCase())
+    }, PROMO_QUOTE_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
+  }, [promoCode])
 
   useEffect(() => {
     let cancelled = false
@@ -191,7 +204,7 @@ function DirectPortalBookPage() {
       try {
         const data = await apiFetch(`/v1/public/direct-portals/${encodeURIComponent(slug)}`)
         if (!cancelled) {
-          setPayload(data)
+          setPayload(unwrapJsonResourceData(data))
         }
       } catch (e) {
         if (cancelled) {
@@ -223,7 +236,7 @@ function DirectPortalBookPage() {
 
   const unit = useMemo(() => {
     const idStr = String(unitId ?? '')
-    return units.find((u) => String(u.id) === idStr) ?? null
+    return units.find((u) => String(u.uuid ?? u.id) === idStr) ?? null
   }, [units, unitId])
 
   const maxGuests = useMemo(() => {
@@ -243,7 +256,7 @@ function DirectPortalBookPage() {
     }
     let cancelled = false
     const slug = merchantSlug ?? ''
-    const uid = unit.id
+    const uid = unit.uuid ?? unit.id
 
     async function run() {
       setQuoteLoading(true)
@@ -255,9 +268,8 @@ function DirectPortalBookPage() {
           checkOut,
           unitCount: String(Math.min(Math.max(1, unitCount), maxPortalUnits)),
         })
-        const promo = promoCode.trim().toUpperCase()
-        if (promo) {
-          qs.set('promoCode', promo)
+        if (debouncedPromoForQuote) {
+          qs.set('promoCode', debouncedPromoForQuote)
         }
         const data = await apiFetch(`/v1/public/direct-portals/${encodeURIComponent(slug)}/quote?${qs.toString()}`)
         if (!cancelled) {
@@ -288,14 +300,14 @@ function DirectPortalBookPage() {
     return () => {
       cancelled = true
     }
-  }, [unit, merchantSlug, checkIn, checkOut, unitCount, maxPortalUnits, promoCode])
+  }, [unit, merchantSlug, checkIn, checkOut, unitCount, maxPortalUnits, debouncedPromoForQuote])
 
   useEffect(() => {
     setFormError(null)
   }, [checkIn, checkOut, unitCount, promoCode])
 
   useEffect(() => {
-    if (!merchantSlug || !unit?.id) {
+    if (!merchantSlug || !unit) {
       setUnitCalendarRow(null)
       return
     }
@@ -303,14 +315,14 @@ function DirectPortalBookPage() {
     const slug = merchantSlug ?? ''
     const from = toYmdLocal(new Date())
     const to = addDaysToYmd(from, 400)
-    const qs = new URLSearchParams({ from, to, unitId: String(unit.id) })
+    const qs = new URLSearchParams({ from, to, unitId: String(unit.uuid ?? unit.id) })
 
     async function run() {
       try {
         const data = await apiFetch(`/v1/public/direct-portals/${encodeURIComponent(slug)}/calendar?${qs.toString()}`)
         if (cancelled) return
         const rows = Array.isArray(data?.units) ? data.units : []
-        const row = rows.find((r) => String(r.id) === String(unit.id)) ?? rows[0] ?? null
+        const row = rows.find((r) => String(r.uuid ?? r.id) === String(unit.uuid ?? unit.id)) ?? rows[0] ?? null
         setUnitCalendarRow(row)
       } catch {
         if (!cancelled) {
@@ -323,7 +335,7 @@ function DirectPortalBookPage() {
     return () => {
       cancelled = true
     }
-  }, [merchantSlug, unit?.id])
+  }, [merchantSlug, unit?.uuid])
 
   const datesUnavailable = useMemo(() => {
     if (!unitCalendarRow || !checkIn || !checkOut || checkOut <= checkIn) return false
@@ -453,7 +465,7 @@ function DirectPortalBookPage() {
       const data = await apiFetch(`/v1/public/direct-portals/${encodeURIComponent(slug)}/bookings`, {
         method: 'POST',
         body: JSON.stringify({
-          unitId: Number(unit.id),
+          unitId: String(unit.uuid ?? unit.id),
           guestName: name,
           guestEmail: emailTrim,
           guestPhone: mobileTrim,

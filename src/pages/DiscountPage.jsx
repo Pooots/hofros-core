@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../utils/api'
+import { normalizeUnitDiscountFromApi } from '../utils/apiNormalize'
 
 const PROMO_TYPES = [
   { value: 'percentage', label: 'Percentage (%)' },
@@ -151,7 +152,7 @@ function PromoCodeModal({ open, saving, error, initial, onClose, onSubmit }) {
 
 function UnitDiscountModal({ open, saving, error, units, initial, onClose, onSubmit }) {
   const [form, setForm] = useState({
-    unitId: '',
+    unitUuid: '',
     discountType: 'early_bird',
     discountPercent: '',
     minDaysInAdvance: '',
@@ -160,7 +161,12 @@ function UnitDiscountModal({ open, saving, error, units, initial, onClose, onSub
   useEffect(() => {
     if (!open) return
     setForm({
-      unitId: initial?.unitId != null ? String(initial.unitId) : units[0]?.id ? String(units[0].id) : '',
+      unitUuid:
+        initial?.unitUuid != null
+          ? String(initial.unitUuid)
+          : units[0]?.uuid
+            ? String(units[0].uuid)
+            : '',
       discountType: initial?.discountType ?? 'early_bird',
       discountPercent: initial?.discountPercent != null ? String(initial.discountPercent) : '',
       minDaysInAdvance: initial?.minDaysInAdvance != null ? String(initial.minDaysInAdvance) : '',
@@ -182,10 +188,10 @@ function UnitDiscountModal({ open, saving, error, units, initial, onClose, onSub
         onSubmit={(event) => {
           event.preventDefault()
           onSubmit({
-            unitId: Number(form.unitId),
-            discountType: form.discountType,
-            discountPercent: Number(form.discountPercent),
-            minDaysInAdvance: form.minDaysInAdvance.trim() === '' ? null : Number(form.minDaysInAdvance),
+            unit_uuid: form.unitUuid,
+            discount_type: form.discountType,
+            discount_percent: Number(form.discountPercent),
+            min_days_in_advance: form.minDaysInAdvance.trim() === '' ? null : Number(form.minDaysInAdvance),
           })
         }}
         className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"
@@ -202,12 +208,12 @@ function UnitDiscountModal({ open, saving, error, units, initial, onClose, onSub
             <span className="mb-1 block text-sm font-semibold text-slate-800">Unit</span>
             <select
               required
-              value={form.unitId}
-              onChange={(event) => setForm((prev) => ({ ...prev, unitId: event.target.value }))}
+              value={form.unitUuid}
+              onChange={(event) => setForm((prev) => ({ ...prev, unitUuid: event.target.value }))}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200"
             >
               {units.map((unit) => (
-                <option key={unit.id} value={unit.id}>
+                <option key={unit.uuid ?? unit.id} value={unit.uuid ?? unit.id}>
                   {unit.name}
                 </option>
               ))}
@@ -289,7 +295,11 @@ function DiscountPage() {
       apiFetch('/v1/configuration/units'),
     ])
     setPromoCodes(Array.isArray(promoRes?.promoCodes) ? promoRes.promoCodes : [])
-    setUnitDiscounts(Array.isArray(unitRes?.unitDiscounts) ? unitRes.unitDiscounts : [])
+    setUnitDiscounts(
+      Array.isArray(unitRes?.unit_discounts)
+        ? unitRes.unit_discounts.map((r) => normalizeUnitDiscountFromApi(r)).filter(Boolean)
+        : [],
+    )
     setUnits(Array.isArray(unitsRes?.units) ? unitsRes.units : [])
   }
 
@@ -324,7 +334,7 @@ function DiscountPage() {
     setModalError(null)
     try {
       if (editingPromo) {
-        await apiFetch(`/v1/discounts/promo-codes/${editingPromo.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+        await apiFetch(`/v1/discounts/promo-codes/${editingPromo.uuid}`, { method: 'PUT', body: JSON.stringify(payload) })
       } else {
         await apiFetch('/v1/discounts/promo-codes', { method: 'POST', body: JSON.stringify(payload) })
       }
@@ -343,7 +353,7 @@ function DiscountPage() {
     setModalError(null)
     try {
       if (editingUnitDiscount) {
-        await apiFetch(`/v1/discounts/unit-discounts/${editingUnitDiscount.id}`, {
+        await apiFetch(`/v1/discounts/unit-discounts/${editingUnitDiscount.uuid}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         })
@@ -430,7 +440,7 @@ function DiscountPage() {
                     ) : promoCodes.length === 0 ? (
                       <tr><td className="px-4 py-8 text-slate-500" colSpan={6}>No promo codes yet.</td></tr>
                     ) : promoCodes.map((row) => (
-                      <tr key={row.id} className="border-t border-slate-100">
+                      <tr key={row.uuid} className="border-t border-slate-100">
                         <td className="px-4 py-3 font-bold">{row.code}</td>
                         <td className="px-4 py-3 text-emerald-700 font-semibold">{promoValueLabel(row)}</td>
                         <td className="px-4 py-3">{row.minNights} night{row.minNights > 1 ? 's' : ''}</td>
@@ -439,7 +449,7 @@ function DiscountPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <button type="button" onClick={() => { setEditingPromo(row); setPromoModalOpen(true); setModalError(null) }} className="text-slate-700">✎</button>
-                            <button type="button" onClick={() => deletePromo(row.id).catch((e) => setError(e instanceof Error ? e.message : 'Delete failed.'))} className="text-rose-600">🗑</button>
+                            <button type="button" onClick={() => deletePromo(row.uuid).catch((e) => setError(e instanceof Error ? e.message : 'Delete failed.'))} className="text-rose-600">🗑</button>
                           </div>
                         </td>
                       </tr>
@@ -477,7 +487,7 @@ function DiscountPage() {
                     ) : unitDiscounts.length === 0 ? (
                       <tr><td className="px-4 py-8 text-slate-500" colSpan={6}>No unit discounts yet.</td></tr>
                     ) : unitDiscounts.map((row) => (
-                      <tr key={row.id} className="border-t border-slate-100">
+                      <tr key={row.uuid} className="border-t border-slate-100">
                         <td className="px-4 py-3 font-semibold">{row.unitName}</td>
                         <td className="px-4 py-3">{discountTypeLabel(row.discountType)}</td>
                         <td className="px-4 py-3 font-semibold text-emerald-700">{Number(row.discountPercent)}% off</td>
@@ -486,7 +496,7 @@ function DiscountPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <button type="button" onClick={() => { setEditingUnitDiscount(row); setUnitModalOpen(true); setModalError(null) }} className="text-slate-700">✎</button>
-                            <button type="button" onClick={() => deleteUnitDiscount(row.id).catch((e) => setError(e instanceof Error ? e.message : 'Delete failed.'))} className="text-rose-600">🗑</button>
+                            <button type="button" onClick={() => deleteUnitDiscount(row.uuid).catch((e) => setError(e instanceof Error ? e.message : 'Delete failed.'))} className="text-rose-600">🗑</button>
                           </div>
                         </td>
                       </tr>

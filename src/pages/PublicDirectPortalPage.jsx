@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import GuestPortalMicrosite from '../components/guestPortal/GuestPortalMicrosite'
-import { apiFetch } from '../utils/api'
+import { apiFetch, unwrapJsonResourceData } from '../utils/api'
 import { displayNameFromSlug } from '../utils/merchantSlug'
 import { emptyGuestPortalLayout } from '../utils/guestPortalLayout'
 
@@ -42,7 +42,7 @@ function PublicDirectPortalPage() {
       try {
         const data = await apiFetch(`/v1/public/direct-portals/${encodeURIComponent(slug)}`)
         if (!cancelled) {
-          setPayload(data)
+          setPayload(unwrapJsonResourceData(data))
         }
       } catch (e) {
         if (cancelled) {

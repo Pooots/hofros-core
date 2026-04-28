@@ -96,7 +96,7 @@ export default function PortalSearchResultsModal({
           ) : (
             <ul className="space-y-3">
               {matched.map((unit) => {
-                const bookHref = typeof bookTo === 'function' && slug ? bookTo(unit.id) : null
+                const bookHref = typeof bookTo === 'function' && slug ? bookTo(unit.uuid ?? unit.id) : null
                 const useBookLink = Boolean(bookHref) && LinkComponent !== 'span'
                 const BookTag = useBookLink ? LinkComponent : 'button'
                 const bookProps = useBookLink
@@ -106,7 +106,7 @@ export default function PortalSearchResultsModal({
                   : { type: 'button' }
                 return (
                   <li
-                    key={unit.id}
+                    key={unit.uuid ?? unit.id}
                     className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">

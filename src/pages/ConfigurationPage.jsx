@@ -373,7 +373,7 @@ function formatRole(role) {
 }
 
 function mapApiUnitToForm(unit, propertiesList) {
-  const fallbackPropertyId = propertiesList[0]?.id != null ? String(propertiesList[0].id) : ''
+  const fallbackPropertyId = propertiesList[0]?.uuid != null ? String(propertiesList[0].uuid) : ''
   return {
     propertyId:
       unit.propertyId != null && unit.propertyId !== '' ? String(unit.propertyId) : fallbackPropertyId,
@@ -428,7 +428,7 @@ function ConfigurationPage() {
   const [savingPropertyModal, setSavingPropertyModal] = useState(false)
   const [savingNotifications, setSavingNotifications] = useState(false)
 
-  const [propertyModal, setPropertyModal] = useState({ open: false, mode: 'create', id: null })
+  const [propertyModal, setPropertyModal] = useState({ open: false, mode: 'create', uuid: null })
   const [propertyForm, setPropertyForm] = useState(emptyProperty)
 
   const [unitModal, setUnitModal] = useState({ open: false, mode: 'create', unit: null })
@@ -477,7 +477,7 @@ function ConfigurationPage() {
       return []
     }
     return units
-      .filter((u) => u.id !== ratesUnitId)
+      .filter((u) => u.uuid !== ratesUnitId)
       .slice()
       .sort((a, b) => {
         const pa = String(a.propertyName || '').localeCompare(String(b.propertyName || ''), undefined, {
@@ -576,10 +576,10 @@ function ConfigurationPage() {
       return
     }
     setRatesPropertyId((previous) => {
-      if (previous != null && properties.some((p) => String(p.id) === String(previous))) {
+      if (previous != null && properties.some((p) => String(p.uuid) === String(previous))) {
         return previous
       }
-      return String(properties[0].id)
+      return String(properties[0].uuid)
     })
   }, [properties])
 
@@ -592,7 +592,7 @@ function ConfigurationPage() {
       if (previous === ALL_ACCOMMODATION_TYPES_KEY) {
         return previous
       }
-      if (properties.some((propertyRow) => String(propertyRow.id) === String(previous))) {
+      if (properties.some((propertyRow) => String(propertyRow.uuid) === String(previous))) {
         return previous
       }
       return ALL_ACCOMMODATION_TYPES_KEY
@@ -610,10 +610,10 @@ function ConfigurationPage() {
       return
     }
     setRatesUnitId((previous) => {
-      if (previous != null && list.some((u) => u.id === previous)) {
+      if (previous != null && list.some((u) => u.uuid === previous)) {
         return previous
       }
-      return list[0].id
+      return list[0].uuid
     })
   }, [units, ratesPropertyId])
 
@@ -661,8 +661,8 @@ function ConfigurationPage() {
       setCopySourceIntervalsLoading(false)
       return
     }
-    const sourceId = Number(copyIntervalsSourceUnitId)
-    if (!Number.isFinite(sourceId)) {
+    const sourceId = copyIntervalsSourceUnitId.trim()
+    if (!sourceId) {
       setCopySourceIntervals([])
       setCopySelectedIntervalIds([])
       return
@@ -670,14 +670,14 @@ function ConfigurationPage() {
     let cancelled = false
     setCopySourceIntervalsLoading(true)
     setError('')
-    void apiFetch(`/v1/configuration/units/${sourceId}/rate-intervals`)
+    void apiFetch(`/v1/configuration/units/${encodeURIComponent(sourceId)}/rate-intervals`)
       .then((data) => {
         if (cancelled) {
           return
         }
         const list = Array.isArray(data.intervals) ? data.intervals : []
         setCopySourceIntervals(list)
-        setCopySelectedIntervalIds(list.map((row) => row.id))
+        setCopySelectedIntervalIds(list.map((row) => row.uuid))
       })
       .catch((requestError) => {
         if (!cancelled) {
@@ -703,7 +703,7 @@ function ConfigurationPage() {
     setScheduleDrafts(() => {
       const next = {}
       for (const unit of units) {
-        next[unit.id] = normalizeWeekSchedule(unit.weekSchedule)
+        next[unit.uuid] = normalizeWeekSchedule(unit.weekSchedule)
       }
       return next
     })
@@ -717,7 +717,7 @@ function ConfigurationPage() {
 
   function openAddProperty() {
     setPropertyForm({ ...emptyProperty })
-    setPropertyModal({ open: true, mode: 'create', id: null })
+    setPropertyModal({ open: true, mode: 'create', uuid: null })
   }
 
   function openEditProperty(row) {
@@ -730,7 +730,7 @@ function ConfigurationPage() {
       checkInTime: row.checkInTime ?? '14:00',
       checkOutTime: row.checkOutTime ?? '11:00',
     })
-    setPropertyModal({ open: true, mode: 'edit', id: row.id })
+    setPropertyModal({ open: true, mode: 'edit', uuid: row.uuid })
   }
 
   async function handleSavePropertyModal(event) {
@@ -748,13 +748,13 @@ function ConfigurationPage() {
           method: 'POST',
           body: JSON.stringify(propertyPayload),
         })
-      } else if (propertyModal.id != null) {
-        await apiFetch(`/v1/configuration/properties/${propertyModal.id}`, {
+      } else if (propertyModal.uuid != null) {
+        await apiFetch(`/v1/configuration/properties/${propertyModal.uuid}`, {
           method: 'PUT',
           body: JSON.stringify(propertyPayload),
         })
       }
-      setPropertyModal({ open: false, mode: 'create', id: null })
+      setPropertyModal({ open: false, mode: 'create', uuid: null })
       await refreshConfiguration()
       setBanner(propertyModal.mode === 'create' ? 'Accommodation added.' : 'Accommodation updated.')
       window.setTimeout(() => setBanner(''), 3200)
@@ -767,7 +767,7 @@ function ConfigurationPage() {
 
   function toggleScheduleDay(unitId, dayKey) {
     setScheduleDrafts((previous) => {
-      const unitRow = units.find((u) => u.id === unitId)
+      const unitRow = units.find((u) => u.uuid === unitId)
       const base = previous[unitId] ?? normalizeWeekSchedule(unitRow?.weekSchedule)
       return {
         ...previous,
@@ -806,7 +806,7 @@ function ConfigurationPage() {
       return
     }
     try {
-      await apiFetch(`/v1/configuration/properties/${row.id}`, { method: 'DELETE' })
+      await apiFetch(`/v1/configuration/properties/${row.uuid}`, { method: 'DELETE' })
       await refreshConfiguration()
       setBanner('Accommodation removed.')
       window.setTimeout(() => setBanner(''), 3200)
@@ -846,7 +846,7 @@ function ConfigurationPage() {
   }
 
   function openCreateUnit() {
-    const firstPropertyId = properties[0]?.id != null ? String(properties[0].id) : ''
+    const firstPropertyId = properties[0]?.uuid != null ? String(properties[0].uuid) : ''
     setUnitForm({
       propertyId: firstPropertyId,
       name: '',
@@ -913,7 +913,7 @@ function ConfigurationPage() {
     const descriptionTrim = unitForm.description.trim()
     const imageUrls = Array.isArray(unitForm.images) ? unitForm.images : []
     const payload = {
-      propertyId: Number(unitForm.propertyId),
+      propertyId: String(unitForm.propertyId),
       name: unitForm.name.trim(),
       details: detailsTrim === '' ? null : detailsTrim,
       description: descriptionTrim === '' ? null : descriptionTrim,
@@ -934,12 +934,12 @@ function ConfigurationPage() {
           method: 'POST',
           body: JSON.stringify(payload),
         })
-        unitId = created.id
+        unitId = created.uuid
         setUnitModal({ open: true, mode: 'edit', unit: created })
         setUnitForm(mapApiUnitToForm(created, properties))
       } else if (unitModal.unit) {
-        unitId = unitModal.unit.id
-        const updated = await apiFetch(`/v1/configuration/units/${unitModal.unit.id}`, {
+        unitId = unitModal.unit.uuid
+        const updated = await apiFetch(`/v1/configuration/units/${unitModal.unit.uuid}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         })
@@ -980,7 +980,7 @@ function ConfigurationPage() {
       return
     }
     try {
-      await apiFetch(`/v1/configuration/units/${unit.id}`, { method: 'DELETE' })
+      await apiFetch(`/v1/configuration/units/${unit.uuid}`, { method: 'DELETE' })
       await refreshConfiguration()
       setBanner('Unit removed.')
       window.setTimeout(() => setBanner(''), 3200)
@@ -997,8 +997,8 @@ function ConfigurationPage() {
     if (ratesUnitId == null) {
       return
     }
-    const unitRow = units.find((u) => u.id === ratesUnitId)
-    const propertyRow = properties.find((p) => p.id == null ? false : String(p.id) === String(unitRow?.propertyId))
+    const unitRow = units.find((u) => u.uuid === ratesUnitId)
+    const propertyRow = properties.find((p) => p.uuid == null ? false : String(p.uuid) === String(unitRow?.propertyId))
     const currency = propertyRow?.currency || 'PHP'
     setRateIntervalForm(emptyRateIntervalForm(currency))
     setRateIntervalModal({ open: true, mode: 'create', unitId: ratesUnitId, interval: null })
@@ -1053,7 +1053,7 @@ function ConfigurationPage() {
           body: JSON.stringify(payload),
         })
       } else if (rateIntervalModal.interval) {
-        await apiFetch(`/v1/configuration/units/${unitId}/rate-intervals/${rateIntervalModal.interval.id}`, {
+        await apiFetch(`/v1/configuration/units/${unitId}/rate-intervals/${rateIntervalModal.interval.uuid}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         })
@@ -1075,7 +1075,7 @@ function ConfigurationPage() {
       return
     }
     try {
-      await apiFetch(`/v1/configuration/units/${ratesUnitId}/rate-intervals/${interval.id}`, { method: 'DELETE' })
+      await apiFetch(`/v1/configuration/units/${ratesUnitId}/rate-intervals/${interval.uuid}`, { method: 'DELETE' })
       const data = await apiFetch(`/v1/configuration/units/${ratesUnitId}/rate-intervals`)
       setRateIntervals(Array.isArray(data.intervals) ? data.intervals : [])
       setBanner('Interval removed.')
@@ -1093,13 +1093,13 @@ function ConfigurationPage() {
       setError('Choose a room/unit to copy intervals from.')
       return
     }
-    const sourceId = Number(copyIntervalsSourceUnitId)
-    if (!Number.isFinite(sourceId) || sourceId === ratesUnitId) {
+    const sourceId = copyIntervalsSourceUnitId.trim()
+    if (!sourceId || sourceId === String(ratesUnitId)) {
       setError('Select a different room/unit.')
       return
     }
     const idSet = new Set(copySelectedIntervalIds)
-    const intervalsToCopy = copySourceIntervals.filter((row) => idSet.has(row.id))
+    const intervalsToCopy = copySourceIntervals.filter((row) => idSet.has(row.uuid))
     if (intervalsToCopy.length === 0) {
       setError('Select at least one interval to copy.')
       return
@@ -1118,7 +1118,7 @@ function ConfigurationPage() {
     try {
       if (copyIntervalsReplace && rateIntervals.length > 0) {
         for (const row of [...rateIntervals]) {
-          await apiFetch(`/v1/configuration/units/${ratesUnitId}/rate-intervals/${row.id}`, { method: 'DELETE' })
+          await apiFetch(`/v1/configuration/units/${ratesUnitId}/rate-intervals/${row.uuid}`, { method: 'DELETE' })
         }
       }
       let copied = 0
@@ -1157,7 +1157,7 @@ function ConfigurationPage() {
 
   async function handleRoleChange(member, role) {
     try {
-      await apiFetch(`/v1/configuration/team/${member.id}`, {
+      await apiFetch(`/v1/configuration/team/${member.uuid}`, {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       })
@@ -1274,7 +1274,7 @@ function ConfigurationPage() {
                     </p>
                   )}
                   {properties.map((row) => (
-                    <div key={row.id} className="flex flex-wrap items-center gap-3 px-3 py-3">
+                    <div key={row.uuid} className="flex flex-wrap items-center gap-3 px-3 py-3">
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eff7ff] text-[#2b5aed] ring-1 ring-blue-100">
                           <TabIcon type="building" />
@@ -1361,19 +1361,19 @@ function ConfigurationPage() {
                       All accommodations
                     </button>
                     {properties.map((propertyRow) => {
-                      const isActive = String(unitsPropertyId) === String(propertyRow.id)
+                      const isActive = String(unitsPropertyId) === String(propertyRow.uuid)
                       return (
                         <button
-                          key={propertyRow.id}
+                          key={propertyRow.uuid}
                           type="button"
-                          onClick={() => setUnitsPropertyId(String(propertyRow.id))}
+                          onClick={() => setUnitsPropertyId(String(propertyRow.uuid))}
                           className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition ${
                             isActive
                               ? 'border-[#2b5aed] text-[#0f3f73]'
                               : 'border-transparent text-slate-500 hover:text-slate-800'
                           }`}
                         >
-                          {propertyRow.propertyName || `Accommodation #${propertyRow.id}`}
+                          {propertyRow.propertyName || `Accommodation (${String(propertyRow.uuid).slice(0, 8)}…)`}
                         </button>
                       )
                     })}
@@ -1395,7 +1395,7 @@ function ConfigurationPage() {
                     </p>
                   )}
                   {filteredUnits.map((unit) => (
-                    <div key={unit.id} className="flex flex-wrap items-center gap-3 px-3 py-3">
+                    <div key={unit.uuid} className="flex flex-wrap items-center gap-3 px-3 py-3">
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eff7ff] text-[#2b5aed] ring-1 ring-blue-100">
                           <TabIcon type="house" />
@@ -1477,8 +1477,8 @@ function ConfigurationPage() {
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-[#0f3f73]"
                       >
                         {properties.map((propertyRow) => (
-                          <option key={propertyRow.id} value={String(propertyRow.id)}>
-                            {propertyRow.propertyName || `Accommodation #${propertyRow.id}`}
+                          <option key={propertyRow.uuid} value={String(propertyRow.uuid)}>
+                            {propertyRow.propertyName || `Accommodation (${String(propertyRow.uuid).slice(0, 8)}…)`}
                           </option>
                         ))}
                       </select>
@@ -1496,12 +1496,12 @@ function ConfigurationPage() {
                       {units
                         .filter((u) => String(u.propertyId) === String(ratesPropertyId))
                         .map((unit) => {
-                        const isUnitTab = unit.id === ratesUnitId
+                        const isUnitTab = unit.uuid === ratesUnitId
                         return (
                           <button
-                            key={unit.id}
+                            key={unit.uuid}
                             type="button"
-                            onClick={() => setRatesUnitId(unit.id)}
+                            onClick={() => setRatesUnitId(unit.uuid)}
                             className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition ${
                               isUnitTab
                                 ? 'border-teal-600 text-[#0f3f73]'
@@ -1549,7 +1549,7 @@ function ConfigurationPage() {
                               <p className="text-xs leading-relaxed text-slate-600">
                                 Copy base-rate intervals from another room/unit (any accommodation) into{' '}
                                 <span className="font-semibold text-slate-800">
-                                  {units.find((u) => u.id === ratesUnitId)?.name ?? 'this unit'}
+                                  {units.find((u) => u.uuid === ratesUnitId)?.name ?? 'this unit'}
                                 </span>
                                 . Choose a source unit, then pick one or more intervals below.
                               </p>
@@ -1563,7 +1563,7 @@ function ConfigurationPage() {
                               >
                                 <option value="">Select room/unit…</option>
                                 {otherUnitsForCopy.map((u) => (
-                                  <option key={u.id} value={String(u.id)}>
+                                  <option key={u.uuid} value={String(u.uuid)}>
                                     {(u.propertyName && String(u.propertyName).trim()) ||
                                       `Accommodation #${u.propertyId}`}{' '}
                                     — {u.name}
@@ -1598,7 +1598,7 @@ function ConfigurationPage() {
                                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                                       >
                                         {copySourceIntervals.map((interval) => (
-                                          <option key={interval.id} value={String(interval.id)}>
+                                          <option key={interval.uuid} value={String(interval.uuid)}>
                                             {(interval.name && String(interval.name).trim()) || '—'} ·{' '}
                                             {formatDateDdMmYyyy(interval.startDate)} –{' '}
                                             {formatDateDdMmYyyy(interval.endDate)}
@@ -1703,7 +1703,7 @@ function ConfigurationPage() {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {rateIntervals.map((interval) => (
-                                <tr key={interval.id} className="bg-white hover:bg-slate-50/60">
+                                <tr key={interval.uuid} className="bg-white hover:bg-slate-50/60">
                                   <td className="px-3 py-2.5 align-middle">
                                     <span
                                       className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-slate-50 text-slate-400"
@@ -1791,10 +1791,10 @@ function ConfigurationPage() {
                 ) : (
                   <div className="space-y-3">
                     {units.map((unit) => {
-                      const draft = scheduleDrafts[unit.id] ?? normalizeWeekSchedule(unit.weekSchedule)
+                      const draft = scheduleDrafts[unit.uuid] ?? normalizeWeekSchedule(unit.weekSchedule)
                       return (
                         <div
-                          key={unit.id}
+                          key={unit.uuid}
                           className="rounded-xl border border-slate-100 bg-[#fbfdff] p-4 shadow-sm sm:p-5"
                         >
                           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1814,7 +1814,7 @@ function ConfigurationPage() {
                                     </span>
                                     <Toggle
                                       checked={Boolean(draft[day.key])}
-                                      onChange={() => toggleScheduleDay(unit.id, day.key)}
+                                      onChange={() => toggleScheduleDay(unit.uuid, day.key)}
                                       disabled={disableActions}
                                     />
                                   </div>
@@ -1822,11 +1822,11 @@ function ConfigurationPage() {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => void handleSaveUnitSchedule(unit.id)}
-                                disabled={disableActions || savingScheduleUnitId === unit.id}
+                                onClick={() => void handleSaveUnitSchedule(unit.uuid)}
+                                disabled={disableActions || savingScheduleUnitId === unit.uuid}
                                 className="shrink-0 rounded-lg bg-[#2b5aed] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#2147c7] disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {savingScheduleUnitId === unit.id ? 'Saving…' : 'Save schedule'}
+                                {savingScheduleUnitId === unit.uuid ? 'Saving…' : 'Save schedule'}
                               </button>
                             </div>
                           </div>
@@ -1883,7 +1883,7 @@ function ConfigurationPage() {
                     const sessionEmail = (getMerchantSession()?.email || '').toLowerCase()
                     const isOwnerRow = sessionEmail && member.email?.toLowerCase() === sessionEmail
                     return (
-                    <div key={member.id} className="flex flex-wrap items-center gap-3 px-3 py-3">
+                    <div key={member.uuid} className="flex flex-wrap items-center gap-3 px-3 py-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2b5aed] text-xs font-black text-white">
                         {member.initials}
                       </div>
@@ -1929,7 +1929,7 @@ function ConfigurationPage() {
           role="presentation"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              setPropertyModal({ open: false, mode: 'create', id: null })
+              setPropertyModal({ open: false, mode: 'create', uuid: null })
             }
           }}
         >
@@ -1955,7 +1955,7 @@ function ConfigurationPage() {
                 <button
                   type="button"
                   className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-                  onClick={() => setPropertyModal({ open: false, mode: 'create', id: null })}
+                  onClick={() => setPropertyModal({ open: false, mode: 'create', uuid: null })}
                 >
                   Close
                 </button>
@@ -2058,7 +2058,7 @@ function ConfigurationPage() {
                 <button
                   type="button"
                   className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  onClick={() => setPropertyModal({ open: false, mode: 'create', id: null })}
+                  onClick={() => setPropertyModal({ open: false, mode: 'create', uuid: null })}
                 >
                   Cancel
                 </button>
@@ -2101,8 +2101,8 @@ function ConfigurationPage() {
                         : 'Select an accommodation'}
                     </option>
                     {properties.map((propertyRow) => (
-                      <option key={propertyRow.id} value={String(propertyRow.id)}>
-                        {propertyRow.propertyName || `Accommodation #${propertyRow.id}`}
+                      <option key={propertyRow.uuid} value={String(propertyRow.uuid)}>
+                        {propertyRow.propertyName || `Accommodation (${String(propertyRow.uuid).slice(0, 8)}…)`}
                       </option>
                     ))}
                   </select>

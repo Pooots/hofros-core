@@ -140,6 +140,19 @@ export async function apiFetch(path, options = {}) {
 }
 
 /**
+ * Laravel `JsonResource` / `->response()` wraps the payload as `{ data: { ... } }`.
+ * Use for single-resource responses so the SPA reads `slug`, `units`, etc. at the top level.
+ * @param {unknown} body
+ * @returns {unknown}
+ */
+export function unwrapJsonResourceData(body) {
+  if (body != null && typeof body === 'object' && 'data' in body) {
+    return body.data
+  }
+  return body
+}
+
+/**
  * Download a file (e.g. CSV) from an authenticated GET endpoint.
  * @param {string} path - API path including query string (e.g. /v1/analytics/export?year=2026&granularity=daily)
  * @param {string} [fallbackFilename] - Used if Content-Disposition is missing

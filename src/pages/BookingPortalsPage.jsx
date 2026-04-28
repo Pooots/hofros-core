@@ -183,12 +183,17 @@ function Modal({ title, children, onClose }) {
   )
 }
 
+function portalKey(channel) {
+  return channel?.id ?? channel?.uuid
+}
+
 function disconnectedPrimaryLabel(channel) {
-  return channel.disconnectedActionLabel || (channel.id === 'direct_website' ? 'Build a direct website' : 'Connect')
+  return channel.disconnectedActionLabel || 'Connect'
 }
 
 function isDirectPortalDisconnected(channel) {
-  return channel.id === 'direct_website' && !channel.isConnected
+  const kind = channel.disconnectedActionKind
+  return kind === 'build_direct_website' || kind === 'open_website_builder'
 }
 
 function BookingPortalsPage() {
@@ -259,10 +264,11 @@ function BookingPortalsPage() {
   }
 
   async function handleToggleActive(channel) {
-    setBusyId(channel.id)
+    const id = portalKey(channel)
+    setBusyId(id)
     setBanner(null)
     try {
-      await apiFetch(`/v1/booking-portals/${channel.id}/active`, {
+      await apiFetch(`/v1/booking-portals/${id}/active`, {
         method: 'PATCH',
         body: JSON.stringify({ isActive: !channel.isActive }),
       })
@@ -275,10 +281,11 @@ function BookingPortalsPage() {
   }
 
   async function handleSync(channel) {
-    setBusyId(channel.id)
+    const id = portalKey(channel)
+    setBusyId(id)
     setBanner(null)
     try {
-      const data = await apiFetch(`/v1/booking-portals/${channel.id}/sync`, { method: 'POST', body: '{}' })
+      const data = await apiFetch(`/v1/booking-portals/${id}/sync`, { method: 'POST', body: '{}' })
       setBanner({ type: 'ok', text: data?.message || 'Sync started.' })
       await load()
     } catch (e) {
@@ -289,10 +296,11 @@ function BookingPortalsPage() {
   }
 
   async function handleConnect(channel) {
-    setBusyId(channel.id)
+    const id = portalKey(channel)
+    setBusyId(id)
     setBanner(null)
     try {
-      const data = await apiFetch(`/v1/booking-portals/${channel.id}/connect`, { method: 'POST', body: '{}' })
+      const data = await apiFetch(`/v1/booking-portals/${id}/connect`, { method: 'POST', body: '{}' })
       setBanner({ type: 'ok', text: data?.message || 'Connected.' })
       setAddOpen(false)
       await load()
@@ -304,7 +312,8 @@ function BookingPortalsPage() {
   }
 
   function handleDisconnectedPrimary(channel) {
-    if (channel.id === 'direct_website' && !channel.isConnected) {
+    const kind = channel.disconnectedActionKind
+    if (kind === 'build_direct_website' || kind === 'open_website_builder') {
       setAddOpen(false)
       navigate('/direct-website-builder')
       return
@@ -373,11 +382,12 @@ function BookingPortalsPage() {
               {channels.map((ch) => {
                 const tint = TINT_STYLES[ch.tint] || TINT_STYLES.slate
                 const disconnected = !ch.isConnected
-                const busy = busyId === ch.id
+                const pk = portalKey(ch)
+                const busy = busyId === pk
 
                 return (
                   <article
-                    key={ch.id}
+                    key={pk}
                     className={`flex flex-col rounded-2xl border p-4 shadow-sm ${tint} ${
                       disconnected ? 'opacity-95' : ''
                     }`}
@@ -477,7 +487,7 @@ function BookingPortalsPage() {
                             <RefreshIcon className="h-4 w-4 shrink-0 text-blue-600" />
                             Sync now
                           </button>
-                          {ch.id === 'direct_website' && ch.guestPortalLive ? (
+                          {pk === 'direct_website' && ch.guestPortalLive ? (
                             <a
                               href={typeof ch.visitUrl === 'string' && ch.visitUrl ? ch.visitUrl : '#'}
                               target="_blank"
@@ -491,7 +501,7 @@ function BookingPortalsPage() {
                               Visit site
                             </a>
                           ) : null}
-                          {ch.id === 'direct_website' && ch.guestPortalLive ? (
+                          {pk === 'direct_website' && ch.guestPortalLive ? (
                             <button
                               type="button"
                               onClick={() => navigate('/direct-website-builder')}
@@ -530,13 +540,13 @@ function BookingPortalsPage() {
             <ul className="space-y-2">
               {available.map((ch) => (
                 <li
-                  key={ch.id}
+                  key={portalKey(ch)}
                   className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-[#fbfdff] px-3 py-2"
                 >
                   <span className="text-sm font-bold text-[#0f3f73]">{ch.name}</span>
                   <button
                     type="button"
-                    disabled={busyId === ch.id}
+                    disabled={busyId === portalKey(ch)}
                     onClick={() => handleDisconnectedPrimary(ch)}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
                   >

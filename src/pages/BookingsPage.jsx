@@ -4,6 +4,7 @@ const BOOKINGS_PER_PAGE = 15
 const SEARCH_DEBOUNCE_MS = 350
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { apiFetch } from '../utils/api'
+import { normalizeBookingFromApi } from '../utils/apiNormalize'
 import {
   STATUS_OPTIONS,
   formatMoney,
@@ -60,7 +61,7 @@ function HouseIcon({ className }) {
 function BookingModal({ open, title, units, saving, error, onClose, onSave }) {
   const empty = useMemo(
     () => ({
-      unitId: units[0]?.id ?? '',
+      unitId: units[0]?.uuid ?? '',
       guestName: '',
       guestEmail: '',
       guestPhone: '',
@@ -96,7 +97,7 @@ function BookingModal({ open, title, units, saving, error, onClose, onSave }) {
   function handleSubmit(e) {
     e.preventDefault()
     const payload = {
-      unitId: Number(form.unitId),
+      unitId: String(form.unitId),
       guestName: form.guestName.trim(),
       guestEmail: form.guestEmail.trim(),
       guestPhone: form.guestPhone.trim(),
@@ -153,7 +154,7 @@ function BookingModal({ open, title, units, saving, error, onClose, onSave }) {
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200"
             >
               {units.map((u) => (
-                <option key={u.id} value={u.id}>
+                <option key={u.uuid ?? u.id} value={u.uuid ?? u.id}>
                   {u.name}
                 </option>
               ))}
@@ -393,7 +394,11 @@ function BookingsPage() {
       params.set('status', statusFilter)
     }
     const data = await apiFetch(`/v1/bookings?${params.toString()}`)
-    setBookings(Array.isArray(data?.bookings) ? data.bookings : [])
+    setBookings(
+      Array.isArray(data?.bookings)
+        ? data.bookings.map((b) => normalizeBookingFromApi(b)).filter(Boolean)
+        : [],
+    )
     if (data?.meta && typeof data.meta === 'object') {
       setListMeta({
         currentPage: Number(data.meta.currentPage) || 1,
@@ -476,7 +481,7 @@ function BookingsPage() {
   }
 
   const unitOptions = useMemo(() => {
-    return units.map((u) => ({ id: u.id, name: u.name }))
+    return units.map((u) => ({ uuid: u.uuid, name: u.name }))
   }, [units])
 
   return (
@@ -569,7 +574,7 @@ function BookingsPage() {
                   </tr>
                 ) : (
                   bookings.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                    <tr key={row.uuid} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
                       <td className="px-4 py-4 align-top">
                         <p className="font-bold text-slate-900">{row.guestName}</p>
                         {row.portalBatchId && Array.isArray(row.batchBookings) && row.batchBookings.length > 1 ? (
@@ -606,7 +611,7 @@ function BookingsPage() {
                       <td className="px-4 py-4 align-top text-right">
                         <button
                           type="button"
-                          onClick={() => navigate(`/bookings/${row.id}`)}
+                          onClick={() => navigate(`/bookings/${row.uuid}`)}
                           className="inline-flex min-h-9 min-w-[4.5rem] items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-[#0f3f73] shadow-sm hover:bg-slate-50"
                         >
                           View

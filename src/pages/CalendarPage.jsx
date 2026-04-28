@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utils/api'
+import { normalizeBookingFromApi, normalizeCalendarResponse } from '../utils/apiNormalize'
 import { stayRangesOverlap } from '../utils/stayRange'
 import { formatMoney, sourceLabel, statusLabel } from './bookingsCommon'
 
@@ -221,8 +222,8 @@ function BlockModal({
     if (!open) {
       return
     }
-    const uid = String(initial?.unitId ?? units[0]?.id ?? '')
-    const row = units.find((u) => String(u.id) === uid) || units[0]
+    const uid = String(initial?.unitId ?? units[0]?.uuid ?? '')
+    const row = units.find((u) => String(u.uuid) === uid) || units[0]
     setAccommodationKey(row ? accommodationKeyForUnit(row) : '')
     setUnitId(uid)
     setStartDate(initial?.startDate ?? '')
@@ -234,17 +235,17 @@ function BlockModal({
   useEffect(() => {
     if (!open || mode === 'edit') return
     if (unitsForAccommodation.length === 0) return
-    const ok = unitsForAccommodation.some((u) => String(u.id) === String(unitId))
+    const ok = unitsForAccommodation.some((u) => String(u.uuid) === String(unitId))
     if (!ok) {
-      setUnitId(String(unitsForAccommodation[0].id))
+      setUnitId(String(unitsForAccommodation[0].uuid))
     }
   }, [open, mode, unitsForAccommodation, unitId])
 
   function handleSubmit(e) {
     e.preventDefault()
     onSave({
-      id: initial?.id,
-      unitId: Number(unitId),
+      uuid: initial?.uuid ?? initial?.id,
+      unitId: String(unitId),
       startDate,
       endDate,
       label: label.trim() || 'Blocked',
@@ -292,7 +293,7 @@ function BlockModal({
               onChange={(e) => {
                 setAccommodationKey(e.target.value)
                 const next = units.filter((u) => accommodationKeyForUnit(u) === e.target.value)
-                if (next[0]) setUnitId(String(next[0].id))
+                if (next[0]) setUnitId(String(next[0].uuid))
               }}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-slate-200"
               required
@@ -316,7 +317,7 @@ function BlockModal({
               disabled={mode === 'edit'}
             >
               {unitsForAccommodation.map((u) => (
-                <option key={u.id} value={String(u.id)}>
+                <option key={u.uuid} value={String(u.uuid)}>
                   {u.name}
                 </option>
               ))}
@@ -378,10 +379,10 @@ function BlockModal({
           </label>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            {mode === 'edit' && initial?.id ? (
+            {mode === 'edit' && (initial?.uuid ?? initial?.id) ? (
               <button
                 type="button"
-                onClick={() => onDelete(initial.id)}
+                onClick={() => onDelete(initial.uuid ?? initial.id)}
                 disabled={saving}
                 className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
               >
@@ -478,7 +479,7 @@ function CalendarBookingDetailPopover({
 
   useEffect(() => {
     if (open) setTab('reservation')
-  }, [open, detail?.id])
+  }, [open, detail?.uuid])
 
   useEffect(() => {
     const current = typeof detail?.notes === 'string' ? detail.notes : ''
@@ -486,7 +487,7 @@ function CalendarBookingDetailPopover({
     setNotesItems(notesStringToList(current))
     setNoteInput('')
     setNotesDirty(false)
-  }, [detail?.id, detail?.notes, open])
+  }, [detail?.uuid, detail?.notes, open])
 
   useEffect(() => {
     if (!open) {
@@ -501,7 +502,7 @@ function CalendarBookingDetailPopover({
     setMoveUnitId(nextUnitId)
     setMoveCheckIn(nextCheckIn)
     setMoveCheckOut(nextCheckOut)
-  }, [open, detail?.id, detail?.unitId, detail?.checkIn, detail?.checkOut, calendarSummary?.unitId, calendarSummary?.checkIn, calendarSummary?.checkOut])
+  }, [open, detail?.uuid, detail?.unitId, detail?.checkIn, detail?.checkOut, calendarSummary?.unitId, calendarSummary?.checkIn, calendarSummary?.checkOut])
 
   const layout = useMemo(() => {
     if (!open || !anchorRect || typeof window === 'undefined') return null
@@ -550,7 +551,7 @@ function CalendarBookingDetailPopover({
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
-  }, [open, layout, loading, tab, fetchError, detail?.id])
+  }, [open, layout, loading, tab, fetchError, detail?.uuid])
 
   if (!open || !layout) return null
 
@@ -578,7 +579,7 @@ function CalendarBookingDetailPopover({
   }
   const compatibleMoveUnits = (moveUnits || []).filter((u) => unitSpecMatches(u, moveSpecTemplate))
   const moveUnitsResolved = compatibleMoveUnits.length > 0 ? compatibleMoveUnits : moveUnits || []
-  const selectedMoveUnit = moveUnitsResolved.find((u) => String(u.id) === String(moveUnitId))
+  const selectedMoveUnit = moveUnitsResolved.find((u) => String(u.uuid) === String(moveUnitId))
 
   const linkRowClass =
     'flex w-full items-start gap-1.5 px-0.5 py-1.5 text-left text-[13px] font-semibold text-[#2b7cee] underline decoration-[#2b7cee]/35 underline-offset-2 transition hover:decoration-[#2b7cee]'
@@ -592,7 +593,7 @@ function CalendarBookingDetailPopover({
   }
 
   async function handleSaveNotesClick() {
-    if (!detail?.id) return
+    if (!detail?.uuid) return
     try {
       const pending = noteInput.trim()
       const nextItems = pending ? [...notesItems, pending] : notesItems
@@ -641,7 +642,7 @@ function CalendarBookingDetailPopover({
     setMoveError(null)
     try {
       await onMoveBooking({
-        unitId: Number(moveUnitId),
+        unitId: String(moveUnitId),
         checkIn: moveCheckIn,
         checkOut: moveCheckOut,
       })
@@ -965,7 +966,7 @@ function CalendarBookingDetailPopover({
                   className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
                 >
                   {moveUnitsResolved.map((u) => (
-                    <option key={u.id} value={String(u.id)}>
+                    <option key={u.uuid} value={String(u.uuid)}>
                       {(u.propertyName ? `${u.propertyName} · ` : '') + u.name}
                     </option>
                   ))}
@@ -1065,17 +1066,20 @@ function CalendarBookingDetailPopover({
 
 /** Merge booking API row with calendar units for assignment spec matching. */
 function normalizeAssignmentBooking(raw, units) {
-  const unit = units.find((u) => String(u.id) === String(raw?.unitId))
+  const nb = normalizeBookingFromApi(raw)
+  const base = nb ?? raw
+  const uid = base?.unitId ?? base?.unit_uuid
+  const unit = units.find((u) => String(u.uuid) === String(uid))
   return {
-    ...raw,
-    unitId: raw.unitId,
-    propertyId: unit?.propertyId ?? raw.propertyId ?? null,
-    propertyName: unit?.propertyName ?? raw.accommodationName ?? raw.propertyName ?? '',
-    unitName: unit?.name ?? raw.unitName,
-    type: unit?.type ?? raw.unitType ?? raw.type,
-    bedrooms: unit?.bedrooms ?? raw.bedrooms,
-    beds: unit?.beds ?? raw.beds,
-    maxGuests: unit?.maxGuests ?? raw.maxGuests,
+    ...base,
+    unitId: uid,
+    propertyId: unit?.propertyId ?? base.propertyId ?? null,
+    propertyName: unit?.propertyName ?? base.accommodationName ?? base.propertyName ?? '',
+    unitName: unit?.name ?? base.unitName,
+    type: unit?.type ?? base.unitType ?? base.type,
+    bedrooms: unit?.bedrooms ?? base.bedrooms,
+    beds: unit?.beds ?? base.beds,
+    maxGuests: unit?.maxGuests ?? base.maxGuests,
   }
 }
 
@@ -1115,7 +1119,7 @@ function CalendarPage() {
     const cal = results[0]
     const acc = results[1]
     if (cal.status === 'fulfilled') {
-      setData(cal.value)
+      setData(normalizeCalendarResponse(cal.value))
       setError(null)
     } else {
       setData(null)
@@ -1146,7 +1150,7 @@ function CalendarPage() {
     setBookingDetailPayload(null)
     void apiFetch(`/v1/bookings/${bookingDetailPopover.bookingId}`)
       .then((data) => {
-        if (!cancelled) setBookingDetailPayload(data)
+        if (!cancelled) setBookingDetailPayload(normalizeBookingFromApi(data) ?? data)
       })
       .catch((e) => {
         if (!cancelled) {
@@ -1174,7 +1178,7 @@ function CalendarPage() {
   const flatUnits = useMemo(
     () =>
       units.map((u) => ({
-        id: u.id,
+        uuid: u.uuid,
         name: u.name,
         type: u.type,
         propertyId: u.propertyId,
@@ -1192,8 +1196,8 @@ function CalendarPage() {
       .filter((b) => isAcceptedStatus(b?.status))
       .map((b) => normalizeAssignmentBooking(b, units))
     rows.sort((a, b) => {
-      const aKey = `${a.checkIn || ''}-${a.id || ''}`
-      const bKey = `${b.checkIn || ''}-${b.id || ''}`
+      const aKey = `${a.checkIn || ''}-${a.uuid || ''}`
+      const bKey = `${b.checkIn || ''}-${b.uuid || ''}`
       return aKey.localeCompare(bKey)
     })
     return rows
@@ -1254,7 +1258,7 @@ function CalendarPage() {
   }, [acceptedBookings, acceptedSearch])
 
   const selectedAccepted = useMemo(
-    () => acceptedBookings.find((b) => String(b.id) === String(selectedAcceptedId)) ?? acceptedBookings[0] ?? null,
+    () => acceptedBookings.find((b) => String(b.uuid) === String(selectedAcceptedId)) ?? acceptedBookings[0] ?? null,
     [acceptedBookings, selectedAcceptedId],
   )
 
@@ -1270,7 +1274,7 @@ function CalendarPage() {
     if (!pending?.checkIn || !pending?.checkOut) return false
     if (!unitSpecMatches(unit, pending)) return false
     const hasAssignedOverlap = (unit?.bookings || []).some((b) => {
-      if (String(b.id) === String(pending.id)) return false
+      if (String(b.uuid) === String(pending.uuid)) return false
       if (!isTimelineOccupyingBookingStatus(b?.status)) return false
       return b?.checkIn && b?.checkOut && stayRangesOverlap(pending.checkIn, pending.checkOut, b.checkIn, b.checkOut)
     })
@@ -1284,7 +1288,7 @@ function CalendarPage() {
   function canPlaceBookingOnUnit(unit, bookingId, checkIn, checkOut) {
     if (!unit || !checkIn || !checkOut || checkOut <= checkIn) return false
     const hasBookingOverlap = (unit?.bookings || []).some((b) => {
-      if (String(b?.id) === String(bookingId)) return false
+      if (String(b?.uuid) === String(bookingId)) return false
       if (!isTimelineOccupyingBookingStatus(b?.status)) return false
       return b?.checkIn && b?.checkOut && stayRangesOverlap(checkIn, checkOut, b.checkIn, b.checkOut)
     })
@@ -1312,7 +1316,7 @@ function CalendarPage() {
     setDragDropCandidate({
       bookingId: dragBooking.bookingId,
       guestName: dragBooking.guestName,
-      unitId: unit.id,
+      unitId: unit.uuid,
       unitName: unit.name,
       checkIn: targetCheckIn,
       checkOut: targetCheckOut,
@@ -1330,7 +1334,7 @@ function CalendarPage() {
       await apiFetch(`/v1/bookings/${dragDropCandidate.bookingId}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          unitId: Number(dragDropCandidate.unitId),
+          unitId: String(dragDropCandidate.unitId),
           checkIn: dragDropCandidate.checkIn,
           checkOut: dragDropCandidate.checkOut,
         }),
@@ -1357,15 +1361,15 @@ function CalendarPage() {
     if (assignableUnitsForSelected.length === 0) {
       return
     }
-    const exists = assignableUnitsForSelected.some((u) => String(u.id) === String(assignUnitId))
+    const exists = assignableUnitsForSelected.some((u) => String(u.uuid) === String(assignUnitId))
     if (!exists) {
-      setAssignUnitId(assignableUnitsForSelected[0].id)
+      setAssignUnitId(assignableUnitsForSelected[0].uuid)
     }
   }, [assignableUnitsForSelected, assignUnitId])
 
   useEffect(() => {
     setAssignUnitMenuOpen(false)
-  }, [selectedAcceptedId, selectedAccepted?.id])
+  }, [selectedAcceptedId, selectedAccepted?.uuid])
 
   useEffect(() => {
     if (!assignUnitMenuOpen) return undefined
@@ -1383,7 +1387,7 @@ function CalendarPage() {
     const today = toYmd(new Date())
     setModalMode('create')
     setModalInitial({
-      unitId: flatUnits[0]?.id,
+      unitId: flatUnits[0]?.uuid,
       startDate: today,
       endDate: addDaysYmd(today, 1),
       label: 'Blocked',
@@ -1396,7 +1400,7 @@ function CalendarPage() {
   function openEditBlock(block, unitId) {
     setModalMode('edit')
     setModalInitial({
-      id: block.id,
+      uuid: block.uuid ?? block.id,
       unitId,
       startDate: block.startDate,
       endDate: block.endDate,
@@ -1411,8 +1415,12 @@ function CalendarPage() {
     setModalSaving(true)
     setModalError(null)
     try {
-      const unit = flatUnits.find((u) => String(u.id) === String(payload.unitId))
-      if (unit && blockRangeOverlapsUnitTimelineBookings(unit, payload.startDate, payload.endDate)) {
+      const unit = flatUnits.find((u) => String(u.uuid) === String(payload.unitId))
+      if (
+        modalMode === 'create'
+        && unit
+        && blockRangeOverlapsUnitTimelineBookings(unit, payload.startDate, payload.endDate)
+      ) {
         setModalError(
           'This range overlaps an existing reservation on this unit. Change the dates or update the booking first.',
         )
@@ -1422,7 +1430,7 @@ function CalendarPage() {
         await apiFetch('/v1/unit-date-blocks', {
           method: 'POST',
           body: JSON.stringify({
-            unitId: payload.unitId,
+            unit_uuid: String(payload.unitId),
             startDate: payload.startDate,
             endDate: payload.endDate,
             label: payload.label,
@@ -1430,7 +1438,7 @@ function CalendarPage() {
           }),
         })
       } else {
-        await apiFetch(`/v1/unit-date-blocks/${payload.id}`, {
+        await apiFetch(`/v1/unit-date-blocks/${payload.uuid ?? payload.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             startDate: payload.startDate,
@@ -1548,7 +1556,7 @@ function CalendarPage() {
         method: 'PATCH',
         body: JSON.stringify({ notes: nextNotes }),
       })
-      setBookingDetailPayload(updated)
+      setBookingDetailPayload(normalizeBookingFromApi(updated) ?? updated)
       await load()
     } catch (e) {
       setBookingDetailError(e instanceof Error ? e.message : 'Could not save notes.')
@@ -1567,12 +1575,12 @@ function CalendarPage() {
       const updated = await apiFetch(`/v1/bookings/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          unitId: Number(unitId),
+          unitId: String(unitId),
           checkIn,
           checkOut,
         }),
       })
-      setBookingDetailPayload(updated)
+      setBookingDetailPayload(normalizeBookingFromApi(updated) ?? updated)
       await load()
     } catch (e) {
       setBookingDetailError(e instanceof Error ? e.message : 'Could not move booking.')
@@ -1588,10 +1596,10 @@ function CalendarPage() {
     setAssignError(null)
     setAssignNotice(null)
     try {
-      await apiFetch(`/v1/bookings/${selectedAccepted.id}`, {
+      await apiFetch(`/v1/bookings/${selectedAccepted.uuid}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          unitId: Number(assignUnitId),
+          unitId: String(assignUnitId),
           status: 'assigned',
         }),
       })
@@ -1619,10 +1627,10 @@ function CalendarPage() {
         continue
       }
       try {
-        await apiFetch(`/v1/bookings/${pending.id}`, {
+        await apiFetch(`/v1/bookings/${pending.uuid}`, {
           method: 'PATCH',
           body: JSON.stringify({
-            unitId: Number(target.id),
+            unitId: String(target.uuid),
             status: 'assigned',
           }),
         })
@@ -1775,12 +1783,12 @@ function CalendarPage() {
               <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-5 text-sm text-slate-500">No accepted bookings.</p>
             ) : (
               filteredAcceptedBookings.map((b) => {
-                const active = String(selectedAccepted?.id) === String(b.id)
+                const active = String(selectedAccepted?.uuid) === String(b.uuid)
                 return (
                   <button
-                    key={b.id}
+                    key={b.uuid}
                     type="button"
-                    onClick={() => setSelectedAcceptedId(b.id)}
+                    onClick={() => setSelectedAcceptedId(b.uuid)}
                     className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
                       active ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
@@ -1819,7 +1827,7 @@ function CalendarPage() {
                     >
                       <span className="truncate">
                         {(() => {
-                          const current = assignableUnitsForSelected.find((u) => String(u.id) === String(assignUnitId))
+                          const current = assignableUnitsForSelected.find((u) => String(u.uuid) === String(assignUnitId))
                           return current ? (current.propertyName ? `${current.propertyName} · ` : '') + current.name : 'Select unit'
                         })()}
                       </span>
@@ -1831,14 +1839,14 @@ function CalendarPage() {
                       <div className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                         {assignableUnitsForSelected.map((u) => (
                           <button
-                            key={u.id}
+                            key={u.uuid}
                             type="button"
                             onClick={() => {
-                              setAssignUnitId(String(u.id))
+                              setAssignUnitId(String(u.uuid))
                               setAssignUnitMenuOpen(false)
                             }}
                             className={`block w-full px-2.5 py-2 text-left text-sm font-semibold ${
-                              String(assignUnitId) === String(u.id)
+                              String(assignUnitId) === String(u.uuid)
                                 ? 'bg-[#2b5aed] text-white'
                                 : 'text-slate-800 hover:bg-slate-50'
                             }`}
@@ -1946,7 +1954,7 @@ function CalendarPage() {
                 {isExpanded
                   ? group.rows.map((unit) => {
                   return (
-                    <div key={unit.id} className="flex min-w-0 border-b border-slate-100">
+                    <div key={unit.uuid} className="flex min-w-0 border-b border-slate-100">
                       <div className="sticky left-0 z-10 w-[220px] shrink-0 border-r border-slate-200 bg-white px-3 py-1.5">
                         <p className="text-sm font-bold text-slate-900">{unit.name}</p>
                         <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-snug text-slate-500">
@@ -1977,7 +1985,7 @@ function CalendarPage() {
                                 const canDrop = canPlaceBookingOnUnit(unit, dragBooking.bookingId, dropCheckIn, dropCheckOut)
                                 return (
                                   <div
-                                    key={`drop-${unit.id}-${ymd}`}
+                                    key={`drop-${unit.uuid}-${ymd}`}
                                     className={`border-r last:border-r-0 ${
                                       canDrop ? 'bg-emerald-100/35' : 'bg-rose-100/35'
                                     }`}
@@ -2015,7 +2023,7 @@ function CalendarPage() {
                               : ''
                             return (
                               <div
-                                key={`b-${b.id}`}
+                                key={`b-${b.uuid}`}
                                 className="absolute top-[7px] z-[4] max-w-full"
                                 style={barPositionStyle(startIdx, span)}
                               >
@@ -2033,8 +2041,8 @@ function CalendarPage() {
                                       ) || 1,
                                     )
                                     setDragBooking({
-                                      bookingId: b.id,
-                                      fromUnitId: unit.id,
+                                      bookingId: b.uuid,
+                                      fromUnitId: unit.uuid,
                                       nights,
                                       guestName: b.guestName || 'Guest',
                                       specTemplate: {
@@ -2056,7 +2064,7 @@ function CalendarPage() {
                                     if (!wrap) return
                                     const r = wrap.getBoundingClientRect()
                                     setBookingDetailPopover({
-                                      bookingId: b.id,
+                                      bookingId: b.uuid,
                                       unit,
                                       calendarSummary: b,
                                       anchorRect: {
@@ -2096,19 +2104,19 @@ function CalendarPage() {
                             const clipPathB = timelineBarClipPath({ leftDiag: leftDiagB, rightDiag: rightDiagB })
                             return (
                               <button
-                                key={`k-${k.id}`}
+                                key={`k-${k.uuid}`}
                                 type="button"
                                 title={k.label}
                                 onClick={() =>
                                   openEditBlock(
                                     {
-                                      id: k.id,
+                                      uuid: k.uuid ?? k.id,
                                       startDate: k.startDate,
                                       endDate: k.endDate,
                                       label: k.label,
                                       notes: k.notes ?? '',
                                     },
-                                    unit.id,
+                                    unit.uuid,
                                   )
                                 }
                                 className="absolute top-[7px] z-[5] flex h-[26px] max-w-full items-center overflow-hidden bg-rose-700 px-2 text-left text-[11px] font-semibold leading-tight tracking-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-rose-800"
