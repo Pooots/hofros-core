@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 const BOOKINGS_PER_PAGE = 15
 const SEARCH_DEBOUNCE_MS = 350
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
-import { apiFetch } from '../utils/api'
+import { apiFetch, apiFetchDeduped } from '../utils/api'
 import { normalizeBookingFromApi } from '../utils/apiNormalize'
 import {
   STATUS_OPTIONS,
@@ -393,7 +393,7 @@ function BookingsPage() {
     if (statusFilter && statusFilter !== 'all') {
       params.set('status', statusFilter)
     }
-    const data = await apiFetch(`/v1/bookings?${params.toString()}`)
+    const data = await apiFetchDeduped(`/v1/bookings?${params.toString()}`)
     setBookings(
       Array.isArray(data?.bookings)
         ? data.bookings.map((b) => normalizeBookingFromApi(b)).filter(Boolean)
@@ -415,28 +415,22 @@ function BookingsPage() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const uRes = await apiFetch('/v1/configuration/units')
-        if (!cancelled && uRes?.units) {
-          setUnits(uRes.units)
-        }
-      } catch {
-        // Units are optional for list display; modal may stay empty.
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
     async function run() {
       setLoading(true)
       setListError(null)
       try {
-        await loadBookings()
+        await Promise.all([
+          apiFetchDeduped('/v1/configuration/units')
+            .then((uRes) => {
+              if (!cancelled && uRes?.units) {
+                setUnits(uRes.units)
+              }
+            })
+            .catch(() => {
+              /* Units optional for list; modal may stay empty */
+            }),
+          loadBookings(),
+        ])
       } catch (e) {
         if (!cancelled) {
           setListError(e instanceof Error ? e.message : 'Could not load bookings.')

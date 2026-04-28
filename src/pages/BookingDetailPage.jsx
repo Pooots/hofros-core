@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { apiFetch } from '../utils/api'
+import { apiFetch, unwrapJsonResourceData } from '../utils/api'
 import { looksLikeUuid, normalizeBookingFromApi } from '../utils/apiNormalize'
 import {
   DetailRow,
@@ -178,8 +178,8 @@ function BookingDetailPage() {
     setLoadError(null)
     setLoading(true)
     try {
-      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`)
-      const normalized = normalizeBookingFromApi(data)
+      const raw = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`)
+      const normalized = normalizeBookingFromApi(unwrapJsonResourceData(raw))
       if (normalized?.uuid) {
         setRow(normalized)
       } else {
@@ -343,11 +343,11 @@ function BookingDetailPage() {
       payload.totalPrice = n
     }
     try {
-      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
+      const raw = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       })
-      const next = normalizeBookingFromApi(data)
+      const next = normalizeBookingFromApi(unwrapJsonResourceData(raw))
       if (next) {
         setRow(next)
       }
@@ -415,11 +415,11 @@ function BookingDetailPage() {
     setSaving(true)
     setViewError(null)
     try {
-      const data = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
+      const raw = await apiFetch(`/v1/bookings/${encodeURIComponent(bookingUuid)}`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       })
-      const next = normalizeBookingFromApi(data)
+      const next = normalizeBookingFromApi(unwrapJsonResourceData(raw))
       if (next) {
         setRow(next)
       }

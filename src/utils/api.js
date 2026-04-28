@@ -152,6 +152,32 @@ export function unwrapJsonResourceData(body) {
   return body
 }
 
+/** Reuse one in-flight GET when StrictMode or sibling effects fire the same URL concurrently. */
+const inflightDedupedGets = new Map()
+
+/**
+ * Same as {@link apiFetch}, but duplicate GETs to the same `path` share one network request until it settles.
+ * POST/PUT/PATCH/DELETE always pass through (no dedupe).
+ * @param {string} path
+ * @param {Parameters<apiFetch>[1]} [options]
+ */
+export async function apiFetchDeduped(path, options = {}) {
+  const method = String(options?.method ?? 'GET').toUpperCase()
+  if (method !== 'GET') {
+    return apiFetch(path, options)
+  }
+  const key = path.startsWith('/') ? path : `/${path}`
+  const existing = inflightDedupedGets.get(key)
+  if (existing) {
+    return existing
+  }
+  const pending = apiFetch(path, options).finally(() => {
+    inflightDedupedGets.delete(key)
+  })
+  inflightDedupedGets.set(key, pending)
+  return pending
+}
+
 /**
  * Download a file (e.g. CSV) from an authenticated GET endpoint.
  * @param {string} path - API path including query string (e.g. /v1/analytics/export?year=2026&granularity=daily)
